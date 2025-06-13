@@ -1,0 +1,12 @@
+[build]
+builder = "dockerfile"
+watchPatterns = ["src/**", "package.json"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "always"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "pup-ai-v2"
