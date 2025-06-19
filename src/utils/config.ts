@@ -37,16 +37,16 @@ export const config: Config = {
     botToken: getRequiredEnv('SLACK_BOT_TOKEN'),
     appToken: getRequiredEnv('SLACK_APP_TOKEN'),
     signingSecret: getRequiredEnv('SLACK_SIGNING_SECRET'),
-    myUserId: getRequiredEnv('MY_USER_ID'),
+    myUserId: process.env.MY_USER_ID || getRequiredEnv('MYUSERID'),
   },
   openai: {
     apiKey: getRequiredEnv('OPENAI_API_KEY'),
   },
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://localhost:5432/pup_ai_v2',
+    url: getRequiredEnv('DATABASE_URL'),
   },
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: getRequiredEnv('REDIS_URL'),
   },
   app: {
     port: parseInt(process.env.PORT || '3000', 10),
