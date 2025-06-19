@@ -81,11 +81,6 @@ export function asyncHandler<T extends (...args: any[]) => Promise<any>>(
   fn: T
 ): T {
   return (async (...args: any[]) => {
-    try {
-      return await fn(...args);
-    } catch (error) {
-      // Let the global error handler deal with it
-      throw error;
-    }
+    return await fn(...args);
   }) as T;
 }

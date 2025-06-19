@@ -24,3 +24,13 @@ export async function disconnectRedis(): Promise<void> {
     await redisClient.disconnect();
   }
 }
+
+// Wrapper for easier access
+export const redis = {
+  getClient: async () => {
+    if (!redisClient.isOpen) {
+      await connectRedis();
+    }
+    return redisClient;
+  }
+};

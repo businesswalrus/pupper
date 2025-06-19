@@ -12,31 +12,31 @@ interface EnvVariable {
 const ENV_SCHEMA: EnvVariable[] = [
   // Slack Configuration
   {
-    name: 'SLACKBOTTOKEN',
+    name: 'SLACK_BOT_TOKEN',
     required: true,
     type: 'string',
     validator: (v) => v.startsWith('xoxb-'),
   },
   {
-    name: 'SLACKAPPTOKEN',
+    name: 'SLACK_APP_TOKEN',
     required: true,
     type: 'string',
     validator: (v) => v.startsWith('xapp-'),
   },
   {
-    name: 'SLACKSIGNINGSECRET',
+    name: 'SLACK_SIGNING_SECRET',
     required: true,
     type: 'string',
   },
   {
-    name: 'MYUSERID',
+    name: 'MY_USER_ID',
     required: true,
     type: 'string',
     validator: (v) => v.startsWith('U'),
   },
   // OpenAI Configuration
   {
-    name: 'OPENAPIKEY',
+    name: 'OPENAI_API_KEY',
     required: true,
     type: 'string',
     validator: (v) => v.startsWith('sk-'),

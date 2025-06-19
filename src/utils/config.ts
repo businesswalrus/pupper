@@ -34,13 +34,13 @@ function getRequiredEnv(name: string): string {
 
 export const config: Config = {
   slack: {
-    botToken: getRequiredEnv('SLACKBOTTOKEN'),
-    appToken: getRequiredEnv('SLACKAPPTOKEN'),
-    signingSecret: getRequiredEnv('SLACKSIGNINGSECRET'),
-    myUserId: getRequiredEnv('MYUSERID'),
+    botToken: getRequiredEnv('SLACK_BOT_TOKEN'),
+    appToken: getRequiredEnv('SLACK_APP_TOKEN'),
+    signingSecret: getRequiredEnv('SLACK_SIGNING_SECRET'),
+    myUserId: getRequiredEnv('MY_USER_ID'),
   },
   openai: {
-    apiKey: getRequiredEnv('OPENAPIKEY'),
+    apiKey: getRequiredEnv('OPENAI_API_KEY'),
   },
   database: {
     url: process.env.DATABASE_URL || 'postgresql://localhost:5432/pup_ai_v2',

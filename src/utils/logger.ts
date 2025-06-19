@@ -13,6 +13,8 @@ export interface LogContext {
   messageTs?: string;
   error?: Error;
   metadata?: Record<string, any>;
+  // Additional context fields
+  [key: string]: any;
 }
 
 class Logger {
@@ -56,14 +58,20 @@ class Logger {
         log.error = {
           name: context.error.name,
           message: context.error.message,
-          stack: context.error.stack,
         };
+        // Only include stack trace in development
+        if (env !== 'production') {
+          log.error.stack = context.error.stack;
+        }
       }
     }
 
     // In production, use JSON format for structured logging
     if (env === 'production') {
-      return JSON.stringify(log);
+      // Import sanitizeLogData dynamically to avoid circular dependency
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { sanitizeLogData } = require('./security');
+      return JSON.stringify(sanitizeLogData(log));
     }
 
     // In development, use human-readable format

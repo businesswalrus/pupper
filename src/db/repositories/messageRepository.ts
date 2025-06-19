@@ -166,11 +166,11 @@ export class MessageRepository {
     const query = `
       SELECT * FROM messages 
       WHERE channel_id = $1 
-      AND created_at >= NOW() - INTERVAL '${hours} hours'
+      AND created_at >= NOW() - INTERVAL $2
       ORDER BY created_at DESC
-      LIMIT $2
+      LIMIT $3
     `;
-    const result = await pool.query(query, [channelId, limit]);
+    const result = await pool.query(query, [channelId, `${hours} hours`, limit]);
     return result.rows;
   }
 }

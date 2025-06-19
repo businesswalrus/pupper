@@ -60,11 +60,11 @@ export class SummaryRepository {
   ): Promise<ConversationSummary[]> {
     const query = `
       SELECT * FROM conversation_summaries 
-      WHERE created_at >= NOW() - INTERVAL '${hours} hours'
+      WHERE created_at >= NOW() - INTERVAL $1
       ORDER BY created_at DESC 
-      LIMIT $1
+      LIMIT $2
     `;
-    const result = await pool.query(query, [limit]);
+    const result = await pool.query(query, [`${hours} hours`, limit]);
     return result.rows;
   }
 

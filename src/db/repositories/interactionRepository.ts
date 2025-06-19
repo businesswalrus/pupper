@@ -47,7 +47,7 @@ export class InteractionRepository {
     const [user1, user2] = [userAId, userBId].sort();
 
     // Build update query
-    let updateParts = [
+    const updateParts = [
       'interaction_count = interaction_count + 1',
       'last_interaction_at = CURRENT_TIMESTAMP'
     ];
@@ -156,7 +156,7 @@ export class InteractionRepository {
     ]);
 
     const stats = statsResult.rows[0];
-    const topTopics = topicsResult.rows.map(row => row.topic);
+    const topTopics = topicsResult.rows.map((row: any) => row.topic);
 
     return {
       totalInteractions: parseInt(stats.total_interactions || '0'),
@@ -180,7 +180,7 @@ export class InteractionRepository {
     const result = await pool.query(query, [limit]);
     
     const nodes = new Map<string, number>();
-    const edges = result.rows.map(row => {
+    const edges = result.rows.map((row: any) => {
       // Track nodes
       nodes.set(row.user_a_id, (nodes.get(row.user_a_id) || 0) + row.interaction_count);
       nodes.set(row.user_b_id, (nodes.get(row.user_b_id) || 0) + row.interaction_count);

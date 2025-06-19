@@ -116,7 +116,7 @@ export class SearchIntegration {
 
     // Handle based on search type
     switch (searchContext.searchType) {
-      case 'fact_check':
+      case 'fact_check': {
         const factCheckResult = await factChecker.checkMessage(message);
         response.factCheckResults = factCheckResult;
         response.corrections = factCheckResult.corrections;
@@ -127,6 +127,7 @@ export class SearchIntegration {
           response.suggestedResponse = this.generateVerificationResponse(response.searchResults);
         }
         break;
+      }
 
       case 'question':
         response.suggestedResponse = this.generateAnswerResponse(

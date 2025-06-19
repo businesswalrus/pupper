@@ -8,6 +8,8 @@ import { generateResponse, shouldInterject, updateUserOpinion } from '@ai/person
 import { scheduleChannelSummarization } from '@workers/summarizer';
 import { factChecker } from '@ai/factChecker';
 import { logger } from '@utils/logger';
+import { InputSanitizer, validateSlackEvent } from '@utils/sanitization';
+import { RateLimiter } from '@utils/rateLimiter';
 
 // Track recent messages for interjection decisions
 const recentMessages = new Map<string, string[]>();
@@ -22,32 +24,52 @@ app.message(async ({ message, say, client }) => {
   // Cast to a user message type
   const userMessage = message as any;
   
+  // Validate event structure
+  if (!validateSlackEvent(userMessage)) {
+    logger.warn('Invalid Slack event structure', { event: userMessage });
+    return;
+  }
+  
   // Skip messages from the bot itself
   if (userMessage.user === config.slack.myUserId) {
     return;
   }
 
   try {
+    // Sanitize inputs
+    const sanitizedUserId = InputSanitizer.sanitizeSlackId(userMessage.user, 'user');
+    const sanitizedChannelId = InputSanitizer.sanitizeSlackId(userMessage.channel, 'channel');
+    const sanitizedText = InputSanitizer.sanitizeMessage(userMessage.text);
+    
+    // Check for prompt injection attempts
+    if (InputSanitizer.detectPromptInjection(sanitizedText)) {
+      logger.warn('Potential prompt injection detected', {
+        user: sanitizedUserId,
+        channel: sanitizedChannelId,
+      });
+      // Continue processing but be cautious with AI responses
+    }
+    
     // Ensure user exists in database
-    let user = await userRepository.findBySlackId(userMessage.user);
+    let user = await userRepository.findBySlackId(sanitizedUserId);
     if (!user) {
       // Fetch user info from Slack
-      const userInfo = await client.users.info({ user: userMessage.user });
+      const userInfo = await client.users.info({ user: sanitizedUserId });
       if (userInfo.user) {
         user = await userRepository.create({
-          slack_user_id: userMessage.user,
-          username: userInfo.user.name,
-          real_name: userInfo.user.real_name,
-          display_name: userInfo.user.profile?.display_name,
+          slack_user_id: sanitizedUserId,
+          username: InputSanitizer.sanitizeUsername(userInfo.user.name),
+          real_name: InputSanitizer.sanitizeUsername(userInfo.user.real_name),
+          display_name: InputSanitizer.sanitizeUsername(userInfo.user.profile?.display_name),
         });
       }
     }
 
     // Store the message
     const storedMessage = await messageRepository.create({
-      slack_user_id: userMessage.user,
-      channel_id: userMessage.channel,
-      message_text: userMessage.text || '',
+      slack_user_id: sanitizedUserId,
+      channel_id: sanitizedChannelId,
+      message_text: sanitizedText,
       message_ts: userMessage.ts,
       thread_ts: userMessage.thread_ts,
       parent_user_ts: userMessage.thread_ts ? userMessage.parent_user_ts : undefined,
@@ -116,12 +138,22 @@ app.message(async ({ message, say, client }) => {
     const botMention = `<@${config.slack.myUserId}>`;
     if (userMessage.text && userMessage.text.includes(botMention)) {
       try {
+        // Check rate limit for AI responses
+        const rateLimitResult = await RateLimiter.checkLimit(sanitizedUserId, 'aiResponse');
+        if (!rateLimitResult.allowed) {
+          await say({
+            text: `Hey there! I need a quick breather 😅 Try again in a minute?`,
+            thread_ts: userMessage.thread_ts || userMessage.ts,
+          });
+          return;
+        }
+        
         // Generate contextual response
         const response = await generateResponse(
-          userMessage.text.replace(botMention, '').trim(),
-          userMessage.channel,
-          userMessage.user,
-          user?.username || userMessage.user,
+          sanitizedText.replace(botMention, '').trim(),
+          sanitizedChannelId,
+          sanitizedUserId,
+          user?.username || sanitizedUserId,
           userMessage.thread_ts
         );
 
