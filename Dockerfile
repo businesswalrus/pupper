@@ -25,15 +25,22 @@ WORKDIR /app
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
 
+# Copy package files first (as root for npm install)
+COPY package*.json ./
+
+# Install ALL dependencies (need devDeps for migrations)
+RUN npm ci && npm cache clean --force
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy built application and all necessary files
+# Copy built application and migrations with correct ownership
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
-COPY --from=builder --chown=nodejs:nodejs /app/migrations ./migrations
+COPY --chown=nodejs:nodejs migrations ./migrations
+
+# Change ownership of node_modules to nodejs user
+RUN chown -R nodejs:nodejs /app
 
 # Switch to non-root user
 USER nodejs
