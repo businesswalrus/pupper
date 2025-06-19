@@ -55,5 +55,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application with migrations
-CMD ["sh", "-c", "npm run db:migrate && node dist/index.js"]
+# Start the application directly (skip migrations for now)
+CMD ["node", "dist/index.js"]

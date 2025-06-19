@@ -16,6 +16,7 @@
     "test:integration": "jest --testPathPattern=integration",
     "db:create": "node-pg-migrate create --migration-file-language sql",
     "db:migrate": "node-pg-migrate up",
+    "migrate:prod": "node scripts/migrate.js",
     "db:rollback": "node-pg-migrate down",
     "db:reset": "node-pg-migrate reset"
   },
