@@ -1,3 +1,5 @@
+console.log('Starting pup.ai v2 - Loading modules...');
+
 import { app } from '@bot/app';
 import { config } from '@utils/config';
 import { testConnection, closePool } from '@db/connection';
@@ -12,22 +14,34 @@ import '@utils/validation'; // Validates environment on load
 import '@bot/handlers/message'; // Import message handler to register it
 import '@bot/commands/search'; // Import search commands
 
+console.log('Modules loaded successfully');
+
 let embeddingWorker: Worker | null = null;
 let summarizerWorker: Worker | null = null;
 let profilerWorker: Worker | null = null;
 
 const start = async () => {
   try {
+    logger.info('Starting pup.ai v2...');
+    logger.info(`Environment: ${config.app.nodeEnv}`);
+    logger.info(`Port: ${config.app.port}`);
+    
     // Test database connection
+    logger.info('Connecting to database...');
     await testConnection();
+    logger.info('Database connected successfully');
     
     // Connect to Redis
+    logger.info('Connecting to Redis...');
     await connectRedis();
+    logger.info('Redis connected successfully');
 
     // Start all workers
+    logger.info('Starting background workers...');
     embeddingWorker = createEmbeddingWorker();
     summarizerWorker = createSummarizerWorker();
     profilerWorker = createProfilerWorker();
+    logger.info('Background workers started');
 
     // Process any existing messages without embeddings
     setTimeout(async () => {
@@ -36,6 +50,7 @@ const start = async () => {
     }, 5000); // Wait 5 seconds after startup
 
     // Start the Bolt app
+    logger.info('Starting Slack app...');
     await app.start(config.app.port);
     logger.info(`⚡️ pup.ai v2 is running on port ${config.app.port} in ${config.app.nodeEnv} mode!`);
     logger.info(`🐕 Bot user ID: ${config.slack.myUserId}`);
@@ -43,6 +58,7 @@ const start = async () => {
     logger.info(`🧠 AI features enabled with memory and personality`);
   } catch (error) {
     logger.error('Unable to start app', { error: error as Error });
+    console.error('Startup error:', error); // Also log to console for Railway
     process.exit(1);
   }
 };
@@ -108,4 +124,8 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
 });
 
 // Start the app
-start();
+console.log('Calling start() function...');
+start().catch((error) => {
+  console.error('Failed to start app:', error);
+  process.exit(1);
+});

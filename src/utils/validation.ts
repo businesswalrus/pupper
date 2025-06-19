@@ -30,7 +30,13 @@ const ENV_SCHEMA: EnvVariable[] = [
   },
   {
     name: 'MY_USER_ID',
-    required: true,
+    required: false, // Not required because we check MYUSERID as fallback
+    type: 'string',
+    validator: (v) => v.startsWith('U'),
+  },
+  {
+    name: 'MYUSERID',
+    required: false, // Alternative to MY_USER_ID
     type: 'string',
     validator: (v) => v.startsWith('U'),
   },
@@ -79,6 +85,7 @@ const ENV_SCHEMA: EnvVariable[] = [
 ];
 
 export function validateEnvironment(): void {
+  console.log('Running environment validation...');
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -130,6 +137,11 @@ export function validateEnvironment(): void {
     }
   }
 
+  // Check that at least one of MY_USER_ID or MYUSERID is set
+  if (!process.env.MY_USER_ID && !process.env.MYUSERID) {
+    errors.push('Missing required environment variable: MY_USER_ID or MYUSERID');
+  }
+
   // Additional validation checks
   if (process.env.NODE_ENV === 'production') {
     // Production-specific checks
@@ -156,4 +168,9 @@ export function validateEnvironment(): void {
 }
 
 // Validate on module load
-validateEnvironment();
+try {
+  validateEnvironment();
+} catch (error) {
+  console.error('Environment validation failed:', error);
+  throw error;
+}
