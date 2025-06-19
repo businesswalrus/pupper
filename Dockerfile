@@ -38,6 +38,8 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy built application and migrations with correct ownership
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --chown=nodejs:nodejs migrations ./migrations
+# Copy tsconfig.json for tsconfig-paths to resolve aliases
+COPY --chown=nodejs:nodejs tsconfig.json ./
 
 # Change ownership of node_modules to nodejs user
 RUN chown -R nodejs:nodejs /app
@@ -55,5 +57,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application directly (skip migrations for now)
-CMD ["node", "dist/index.js"]
+# Start the application with tsconfig-paths support
+CMD ["node", "dist/bootstrap.js"]
