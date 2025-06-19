@@ -33,8 +33,6 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 COPY --from=builder --chown=nodejs:nodejs /app/migrations ./migrations
-# Copy any migration config files if they exist
-COPY --from=builder --chown=nodejs:nodejs /app/.node-pg-migrate* ./ 2>/dev/null || true
 
 # Switch to non-root user
 USER nodejs
