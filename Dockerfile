@@ -1,10 +1,11 @@
-# Build stage - Updated for Railway deployment
+# Build stage - Updated for Railway deployment v2
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
+COPY package-lock.json ./
 
 # Install all dependencies (including devDependencies for migrations)
 RUN npm ci && \
@@ -16,8 +17,8 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
+# Production stage - v2
+FROM node:20-alpine AS production
 
 WORKDIR /app
 
