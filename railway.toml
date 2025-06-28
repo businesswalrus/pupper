@@ -1,13 +1,54 @@
+# Railway Configuration for pup.ai v2
+# Optimized for reliable deployments
+
 [build]
+# Use our Railway-optimized Dockerfile
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.railway"
-# Force rebuild by adding a build arg
-buildArgs = { "BUILD_DATE" = "2024-06-28" }
+dockerfilePath = "Dockerfile.railway.v2"
+
+# Build arguments for cache busting and configuration
+[build.args]
+# Force rebuild when needed by updating this timestamp
+BUILD_TIMESTAMP = "2025-06-28-v3"
+# Node.js memory limit for build process
+NODE_OPTIONS = "--max-old-space-size=1024"
 
 [deploy]
+# Health check configuration
 healthcheckPath = "/health"
 healthcheckTimeout = 30
+# Increased start period for database migrations
+startCommand = "node scripts/start-railway.js"
+
+# Restart policy for reliability
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
-# Skip build cache
-noBuildCache = true
+restartPolicyMaxRetries = 5
+
+# Railway-specific settings
+# Increase memory limit for the application
+memoryLimit = "1024"
+
+# Environment-specific overrides
+[environments.production.deploy]
+# Production gets more resources and longer timeouts
+healthcheckTimeout = 60
+memoryLimit = "2048"
+
+[environments.staging.deploy]
+# Staging can have shorter timeouts
+healthcheckTimeout = 30
+memoryLimit = "1024"
+
+# Crash and error handling
+[deploy.crashPolicy]
+# Automatically restart on crashes
+enabled = true
+# Wait before restarting to avoid rapid restart loops
+backoffSeconds = 30
+
+# Resource limits
+[resources]
+# CPU and memory limits (Railway defaults if not specified)
+# These are suggestions - Railway will adjust based on plan
+cpu = "1"
+memory = "1024"
