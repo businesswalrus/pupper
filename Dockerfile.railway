@@ -1,16 +1,17 @@
-# Build stage - Railway deployment optimized
-FROM node:20-alpine AS builder
+# Single stage build for Railway - simpler and more reliable
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install system dependencies
+RUN apk add --no-cache python3 make g++ dumb-init
 
-# Delete package-lock.json to avoid version conflicts
-RUN rm -f package-lock.json
+# Copy only package.json first (not package-lock)
+COPY package.json ./
 
-# Install dependencies with npm install (more flexible than ci)
-RUN npm install --force && \
+# Install ALL dependencies using npm install (not ci)
+# This is more flexible and handles missing packages better
+RUN npm install && \
     npm cache clean --force
 
 # Copy source code
@@ -19,34 +20,11 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS production
-
-WORKDIR /app
-
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
-
-# Copy package files
-COPY package*.json ./
-
-# Delete package-lock.json and install fresh
-RUN rm -f package-lock.json && \
-    npm install --production --force && \
-    npm install --force node-pg-migrate tsconfig-paths && \
-    npm cache clean --force
-
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy built application and migrations with correct ownership
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --chown=nodejs:nodejs migrations ./migrations
-# Copy tsconfig.json for tsconfig-paths to resolve aliases
-COPY --chown=nodejs:nodejs tsconfig.json ./
-
-# Change ownership of node_modules to nodejs user
+# Change ownership
 RUN chown -R nodejs:nodejs /app
 
 # Switch to non-root user
@@ -55,16 +33,12 @@ USER nodejs
 # Expose port
 EXPOSE 3000
 
-# Health check with longer startup period for migrations
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
   CMD node -e "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); })"
 
-# Copy the start script
-COPY --chown=nodejs:nodejs scripts/start-production.js ./scripts/
-COPY --chown=nodejs:nodejs scripts/migrate.js ./scripts/
-
-# Use dumb-init to handle signals properly
+# Use dumb-init to handle signals
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start the application
+# Start the application directly (migrations handled by start script)
 CMD ["node", "scripts/start-production.js"]
