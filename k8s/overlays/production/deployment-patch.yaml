@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pup-ai
+  namespace: pup-ai
+spec:
+  replicas: 5
+  template:
+    spec:
+      containers:
+      - name: pup-ai
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+        env:
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=7168 --enable-source-maps"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pup-ai-workers
+  namespace: pup-ai
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: embedding-worker
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+      - name: summary-worker
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+      - name: profile-worker
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi

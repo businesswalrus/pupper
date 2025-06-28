@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pup-ai-config
+  namespace: pup-ai
+  labels:
+    app: pup-ai
+    component: config
+data:
+  # Application configuration
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  
+  # Observability configuration
+  OTEL_SERVICE_NAME: "pup-ai"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4317"
+  OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
+  METRICS_PORT: "9090"
+  
+  # Redis configuration
+  REDIS_CONNECTION_POOL_SIZE: "10"
+  REDIS_MAX_RETRIES: "3"
+  REDIS_RETRY_DELAY: "1000"
+  
+  # Database configuration
+  DATABASE_POOL_SIZE: "20"
+  DATABASE_POOL_MIN: "5"
+  DATABASE_POOL_IDLE_TIMEOUT: "10000"
+  DATABASE_CONNECTION_TIMEOUT: "5000"
+  
+  # Worker configuration
+  WORKER_CONCURRENCY: "5"
+  EMBEDDING_QUEUE_CONCURRENCY: "3"
+  SUMMARY_QUEUE_CONCURRENCY: "2"
+  PROFILE_QUEUE_CONCURRENCY: "2"
+  
+  # Rate limiting
+  OPENAI_RATE_LIMIT_REQUESTS: "3500"
+  OPENAI_RATE_LIMIT_TOKENS: "90000"
+  OPENAI_RATE_LIMIT_WINDOW: "60000"
+  
+  # Circuit breaker configuration
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+  CIRCUIT_BREAKER_RESET_TIMEOUT: "30000"
+  
+  # Health check configuration
+  HEALTH_CHECK_TIMEOUT: "5000"
+  STARTUP_PROBE_DELAY: "10000"

@@ -1,0 +1,196 @@
+name: Test Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-type:
+        description: 'Type of tests to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - unit
+          - integration
+          - e2e
+          - performance
+      coverage-report:
+        description: 'Generate coverage report'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  test:
+    name: Run ${{ github.event.inputs.test-type }} Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: pupper_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup test database
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+        run: |
+          npm run db:migrate
+
+      - name: Run all tests
+        if: github.event.inputs.test-type == 'all'
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+          REDIS_URL: redis://localhost:6379
+          SLACK_BOT_TOKEN: xoxb-test-token
+          SLACK_APP_TOKEN: xapp-test-token
+          SLACK_SIGNING_SECRET: test-secret
+          OPENAI_API_KEY: sk-test-key
+        run: |
+          if [ "${{ github.event.inputs.coverage-report }}" == "true" ]; then
+            npm test -- --coverage
+          else
+            npm test
+          fi
+
+      - name: Run unit tests
+        if: github.event.inputs.test-type == 'unit'
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+          REDIS_URL: redis://localhost:6379
+          SLACK_BOT_TOKEN: xoxb-test-token
+          SLACK_APP_TOKEN: xapp-test-token
+          SLACK_SIGNING_SECRET: test-secret
+          OPENAI_API_KEY: sk-test-key
+        run: |
+          if [ "${{ github.event.inputs.coverage-report }}" == "true" ]; then
+            npm run test:unit -- --coverage
+          else
+            npm run test:unit
+          fi
+
+      - name: Run integration tests
+        if: github.event.inputs.test-type == 'integration'
+        env:
+          NODE_ENV: test
+          TEST_TYPE: integration
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+          REDIS_URL: redis://localhost:6379
+          SLACK_BOT_TOKEN: xoxb-test-token
+          SLACK_APP_TOKEN: xapp-test-token
+          SLACK_SIGNING_SECRET: test-secret
+          OPENAI_API_KEY: sk-test-key
+        run: |
+          if [ "${{ github.event.inputs.coverage-report }}" == "true" ]; then
+            npm run test:integration -- --coverage
+          else
+            npm run test:integration
+          fi
+
+      - name: Run E2E tests
+        if: github.event.inputs.test-type == 'e2e'
+        env:
+          NODE_ENV: test
+          TEST_TYPE: e2e
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+          REDIS_URL: redis://localhost:6379
+          SLACK_BOT_TOKEN: ${{ secrets.TEST_SLACK_BOT_TOKEN }}
+          SLACK_APP_TOKEN: ${{ secrets.TEST_SLACK_APP_TOKEN }}
+          SLACK_SIGNING_SECRET: ${{ secrets.TEST_SLACK_SIGNING_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.TEST_OPENAI_API_KEY }}
+        run: |
+          echo "E2E tests not yet implemented"
+          # npm run test:e2e
+
+      - name: Run performance tests
+        if: github.event.inputs.test-type == 'performance'
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/pupper_test
+          REDIS_URL: redis://localhost:6379
+        run: |
+          echo "Performance tests not yet implemented"
+          # npm run test:performance
+
+      - name: Generate test report
+        if: always()
+        run: |
+          if [ -f "coverage/lcov.info" ]; then
+            echo "## Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            npx lcov-summary coverage/lcov.info >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload coverage report
+        if: github.event.inputs.coverage-report == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.event.inputs.test-type }}
+          path: coverage/
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let coverageText = '';
+            
+            if (fs.existsSync('coverage/coverage-summary.json')) {
+              const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+              const total = coverage.total;
+              
+              coverageText = `
+              ## Test Coverage Report
+              
+              | Type | Coverage | Statements | Branches | Functions | Lines |
+              |------|----------|------------|----------|-----------|-------|
+              | Percentage | - | ${total.statements.pct}% | ${total.branches.pct}% | ${total.functions.pct}% | ${total.lines.pct}% |
+              | Covered/Total | - | ${total.statements.covered}/${total.statements.total} | ${total.branches.covered}/${total.branches.total} | ${total.functions.covered}/${total.functions.total} | ${total.lines.covered}/${total.lines.total} |
+              `;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `### Test Results: ${{ github.event.inputs.test-type }}
+              
+              ${coverageText}
+              
+              View full report in the [workflow artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).`
+            });

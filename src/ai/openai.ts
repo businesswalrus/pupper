@@ -4,6 +4,7 @@ import { config } from '@utils/config';
 import { circuitBreakers } from '@utils/circuitBreaker';
 import { ApiError, RateLimitError } from '@utils/errors';
 import { logger } from '@utils/logger';
+import { costTracker } from '@services/costTracker';
 
 // Initialize OpenAI client
 export const openai = new OpenAI({
@@ -57,6 +58,15 @@ export async function generateEmbedding(text: string): Promise<EmbeddingResponse
 
           timer();
           logger.logApiCall('OpenAI', 'generateEmbedding', true, Date.now());
+
+          // Track cost
+          await costTracker.trackAPIUsage(
+            'openai',
+            response.model,
+            'system', // System user for embeddings
+            { input: response.usage.prompt_tokens },
+            { textLength: text.length }
+          );
 
           return {
             embedding: response.data[0].embedding,
@@ -140,6 +150,24 @@ export async function generateChatCompletion(
 
           timer();
           logger.logApiCall('OpenAI', 'generateChatCompletion', true, Date.now());
+
+          // Track cost
+          // Extract user ID from messages if available
+          const userId = messages.find(m => m.role === 'user' && 'name' in m)?.name || 'system';
+          
+          await costTracker.trackAPIUsage(
+            'openai',
+            response.model,
+            userId,
+            { 
+              input: response.usage?.prompt_tokens || 0,
+              output: response.usage?.completion_tokens || 0
+            },
+            { 
+              temperature: options.temperature,
+              max_tokens: options.max_tokens 
+            }
+          );
 
           return {
             content: choice.message.content,

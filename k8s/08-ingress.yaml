@@ -1,0 +1,99 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pup-ai
+  namespace: pup-ai
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Content-Security-Policy: default-src 'self'";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+    # WebSocket support for Slack
+    nginx.ingress.kubernetes.io/websocket-services: "pup-ai"
+    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "50"
+    
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+    
+    # Custom error pages
+    nginx.ingress.kubernetes.io/custom-http-errors: "404,500,502,503,504"
+    nginx.ingress.kubernetes.io/default-backend: error-backend
+spec:
+  tls:
+  - hosts:
+    - pup-ai.company.com
+    secretName: pup-ai-tls
+  rules:
+  - host: pup-ai.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pup-ai
+            port:
+              number: 80
+---
+# Certificate for TLS
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pup-ai-tls
+  namespace: pup-ai
+spec:
+  secretName: pup-ai-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+  commonName: pup-ai.company.com
+  dnsNames:
+  - pup-ai.company.com
+  duration: 2160h # 90 days
+  renewBefore: 720h # 30 days before expiry
+---
+# BackendConfig for GKE (optional)
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: pup-ai-backend-config
+  namespace: pup-ai
+spec:
+  connectionDraining:
+    drainingTimeoutSec: 60
+  timeoutSec: 300
+  healthCheck:
+    checkIntervalSec: 30
+    timeoutSec: 10
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /health
+    port: 3000
+  cdn:
+    enabled: false
+  iap:
+    enabled: false
+    oauthclientCredentials:
+      secretName: oauth-client-secret

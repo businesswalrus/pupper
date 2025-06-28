@@ -11,6 +11,14 @@ This is pup.ai v2, a context-aware Slack bot with personality and memory. The bo
 - Uses MCP (Model Context Protocol) for extensibility
 - Deploys to Railway
 
+## Core Principles
+
+1. **Memory First**: Every interaction should consider historical context
+2. **Personality Driven**: Responses should be consistent with bot's personality traits
+3. **Performance Conscious**: Use caching, rate limiting, and efficient queries
+4. **Type Safe**: Leverage TypeScript's type system fully
+5. **Test Coverage**: Aim for >80% test coverage on critical paths
+
 ## Development Commands
 
 ### Project Setup
@@ -119,3 +127,111 @@ The project implements Model Context Protocol servers for:
 - **Slack Extended**: Access to Slack-specific data not available through Bolt.js
 
 MCP servers are initialized in `src/mcp/client.ts` and used throughout the application for extensible functionality.
+
+## Code Style Guidelines
+
+### TypeScript Conventions
+- Use interfaces prefixed with `I` (e.g., `IUser`, `IMessage`)
+- Use type aliases for complex types without prefix
+- Prefer `type` over `interface` for function types
+- Use strict null checks and handle undefined cases
+
+### Import Organization
+Imports should be organized in this order:
+1. Node.js built-ins
+2. External packages
+3. Internal modules using path aliases (@bot, @ai, @db, etc.)
+4. Relative imports
+5. Type imports last
+
+### Error Handling
+- Always use custom error classes from `src/utils/errors.ts`
+- Include context in error messages
+- Log errors with appropriate levels
+- Use circuit breakers for external services
+
+### Database Queries
+- Use parameterized queries to prevent SQL injection
+- Include appropriate indexes for vector searches
+- Batch operations when possible
+- Use transactions for multi-step operations
+
+## Common Patterns
+
+### Feature Flag Usage
+```typescript
+import { isFeatureEnabled, FeatureFlag } from '@utils/featureFlags';
+
+if (isFeatureEnabled(FeatureFlag.SEARCH, userId)) {
+  // Feature-specific code
+}
+```
+
+### Memory Retrieval Pattern
+```typescript
+const context = await memoryService.getRelevantContext({
+  query: message.text,
+  userId: message.user,
+  limit: 50,
+  threshold: 0.7
+});
+```
+
+### Personality Response Pattern
+```typescript
+const response = await personalityEngine.generateResponse({
+  context,
+  userProfile,
+  mood: currentMood,
+  recentInteractions
+});
+```
+
+## Performance Considerations
+
+1. **Embedding Generation**: Queue in background, don't block message processing
+2. **Vector Search**: Use appropriate limits and thresholds
+3. **Caching**: Cache user profiles and frequent queries
+4. **Rate Limiting**: Respect API limits for OpenAI and Slack
+5. **Database Connections**: Use connection pooling
+
+## Security Best Practices
+
+1. **Environment Variables**: Never commit secrets
+2. **Input Validation**: Sanitize all user inputs
+3. **SQL Injection**: Use parameterized queries
+4. **Rate Limiting**: Implement per-user rate limits
+5. **Error Messages**: Don't expose internal details
+
+## Debugging Tips
+
+1. **Enable Debug Mode**: Set `LOG_LEVEL=debug` and `FEATURE_FLAGS=debug_mode`
+2. **VS Code Debugging**: Use provided launch configurations
+3. **Database Queries**: Enable query logging in development
+4. **Worker Jobs**: Monitor with Bull Board at http://localhost:3001
+5. **Memory Usage**: Profile with `npm run profile`
+
+## Common Issues and Solutions
+
+### Bot Not Responding
+- Check Socket Mode connection in logs
+- Verify bot is in the channel
+- Check for rate limiting
+
+### Embeddings Not Generated
+- Check Redis connection for job queue
+- Verify OpenAI API key and limits
+- Check worker logs
+
+### Memory Retrieval Issues
+- Verify pgvector extension is installed
+- Check embedding dimensions match
+- Review similarity threshold settings
+
+## Testing Guidelines
+
+1. **Unit Tests**: Mock all external dependencies
+2. **Integration Tests**: Use test database
+3. **E2E Tests**: Use Slack test workspace
+4. **Performance Tests**: Monitor response times
+5. **Coverage**: Maintain >80% on critical paths

@@ -1,0 +1,127 @@
+# Production-specific resources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: pup-ai-production-quota
+  namespace: pup-ai
+spec:
+  hard:
+    requests.cpu: "200"
+    requests.memory: "400Gi"
+    limits.cpu: "400"
+    limits.memory: "800Gi"
+    persistentvolumeclaims: "20"
+    services: "20"
+---
+# VPA for automatic resource adjustment
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: pup-ai-vpa
+  namespace: pup-ai
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pup-ai
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+    - containerName: pup-ai
+      minAllowed:
+        cpu: 500m
+        memory: 1Gi
+      maxAllowed:
+        cpu: 8
+        memory: 16Gi
+      controlledResources:
+      - cpu
+      - memory
+---
+# PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pup-ai-alerts
+  namespace: pup-ai
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: pup-ai.rules
+    interval: 30s
+    rules:
+    # High error rate alert
+    - alert: PupAIHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{app="pup-ai",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{app="pup-ai"}[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "High error rate detected for pup-ai"
+        description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+        runbook: "https://wiki.company.com/runbooks/pup-ai/high-error-rate"
+    
+    # Pod restart alert
+    - alert: PupAIPodRestarts
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="pup-ai",pod=~"pup-ai-.*"}[1h]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "Pod {{ $labels.pod }} has restarted frequently"
+        description: "Pod has restarted {{ $value }} times in the last hour"
+    
+    # Memory pressure alert
+    - alert: PupAIMemoryPressure
+      expr: |
+        (
+          container_memory_working_set_bytes{namespace="pup-ai",container="pup-ai"}
+          /
+          container_spec_memory_limit_bytes{namespace="pup-ai",container="pup-ai"}
+        ) > 0.9
+      for: 10m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High memory usage in {{ $labels.pod }}"
+        description: "Memory usage is {{ $value | humanizePercentage }}"
+    
+    # Queue backlog alert
+    - alert: PupAIQueueBacklog
+      expr: |
+        bullmq_queue_waiting_jobs{namespace="pup-ai"} > 1000
+      for: 15m
+      labels:
+        severity: warning
+        team: platform
+      annotations:
+        summary: "High queue backlog in {{ $labels.queue }}"
+        description: "{{ $value }} jobs waiting in queue"
+    
+    # Database connection pool exhaustion
+    - alert: PupAIDatabasePoolExhaustion
+      expr: |
+        (
+          pg_pool_connections_busy{namespace="pup-ai"}
+          /
+          pg_pool_connections_total{namespace="pup-ai"}
+        ) > 0.9
+      for: 5m
+      labels:
+        severity: critical
+        team: platform
+      annotations:
+        summary: "Database connection pool near exhaustion"
+        description: "{{ $value | humanizePercentage }} of connections in use"

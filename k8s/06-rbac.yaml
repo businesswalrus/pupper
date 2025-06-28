@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pup-ai
+  namespace: pup-ai
+  labels:
+    app: pup-ai
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/pup-ai-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pup-ai
+  namespace: pup-ai
+rules:
+# ConfigMap access for dynamic configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# Secret access for credentials
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+# Pod access for peer discovery
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+# Endpoint access for service discovery
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pup-ai
+  namespace: pup-ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pup-ai
+subjects:
+- kind: ServiceAccount
+  name: pup-ai
+  namespace: pup-ai
+---
+# ClusterRole for cross-namespace operations if needed
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pup-ai-cluster
+rules:
+# Metrics access
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pup-ai-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pup-ai-cluster
+subjects:
+- kind: ServiceAccount
+  name: pup-ai
+  namespace: pup-ai

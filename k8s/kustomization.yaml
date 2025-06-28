@@ -1,0 +1,63 @@
+# Base kustomization for pup-ai
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pup-ai
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 02-secret.yaml
+  - 03-deployment.yaml
+  - 04-deployment-workers.yaml
+  - 05-service.yaml
+  - 06-rbac.yaml
+  - 07-network-policy.yaml
+  - 08-ingress.yaml
+
+images:
+  - name: your-registry.com/pup-ai
+    newTag: v2.0.0
+
+replicas:
+  - name: pup-ai
+    count: 3
+  - name: pup-ai-workers
+    count: 2
+
+commonLabels:
+  app: pup-ai
+  managed-by: kustomize
+
+configMapGenerator:
+  - name: pup-ai-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=info
+      - NODE_ENV=production
+
+secretGenerator:
+  - name: pup-ai-secrets
+    behavior: replace
+    envs:
+      - secrets.env
+
+patchesStrategicMerge:
+  - |-
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: pup-ai
+      namespace: pup-ai
+    spec:
+      template:
+        spec:
+          containers:
+          - name: pup-ai
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                cpu: 2000m
+                memory: 4Gi

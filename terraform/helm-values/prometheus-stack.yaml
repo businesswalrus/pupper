@@ -1,0 +1,234 @@
+# Prometheus Stack Configuration
+global:
+  resolve_timeout: 5m
+
+# Alertmanager configuration
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url: '${slack_webhook_url}'
+    
+    route:
+      group_by: ['namespace', 'alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      - match:
+          severity: critical
+        receiver: critical
+        continue: true
+      - match:
+          severity: warning
+        receiver: warning
+    
+    receivers:
+    - name: 'default'
+      slack_configs:
+      - channel: '#alerts'
+        title: '[${environment}] Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        
+    - name: 'critical'
+      email_configs:
+      - to: '${alert_email}'
+        from: 'alerts@pup-ai.com'
+        headers:
+          Subject: '[CRITICAL] ${cluster_name}: {{ .GroupLabels.alertname }}'
+      slack_configs:
+      - channel: '#critical-alerts'
+        title: '[CRITICAL][${environment}] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        color: 'danger'
+        
+    - name: 'warning'
+      slack_configs:
+      - channel: '#alerts'
+        title: '[WARNING][${environment}] {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        color: 'warning'
+
+# Grafana configuration
+grafana:
+  enabled: true
+  adminPassword: 'changeme'
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+  
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - grafana-${environment}.pup-ai.com
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana-${environment}.pup-ai.com
+  
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://kube-prometheus-stack-prometheus:9090
+        access: proxy
+        isDefault: true
+      - name: Loki
+        type: loki
+        url: http://loki:3100
+        access: proxy
+  
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  
+  dashboards:
+    default:
+      pup-ai-overview:
+        url: https://raw.githubusercontent.com/your-org/dashboards/main/pup-ai-overview.json
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 11074
+        revision: 9
+        datasource: Prometheus
+
+# Prometheus configuration
+prometheus:
+  prometheusSpec:
+    retention: ${retention_days}d
+    retentionSize: ${storage_size}
+    
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${storage_size}
+    
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 8Gi
+    
+    # Additional scrape configs for pup-ai
+    additionalScrapeConfigs:
+    - job_name: 'pup-ai-pods'
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - pup-ai
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+
+# Prometheus Operator
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 200m
+      memory: 200Mi
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+
+# Additional PrometheusRules
+additionalPrometheusRulesMap:
+  pup-ai-rules:
+    groups:
+    - name: pup-ai.rules
+      interval: 30s
+      rules:
+      - alert: PupAIPodCrashLooping
+        expr: |
+          rate(kube_pod_container_status_restarts_total{namespace="pup-ai"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+          
+      - alert: PupAIHighMemoryUsage
+        expr: |
+          (
+            container_memory_working_set_bytes{namespace="pup-ai", container!=""}
+            / 
+            container_spec_memory_limit_bytes{namespace="pup-ai", container!=""}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit"
+          
+      - alert: PupAIHighCPUUsage
+        expr: |
+          (
+            rate(container_cpu_usage_seconds_total{namespace="pup-ai", container!=""}[5m])
+            /
+            container_spec_cpu_quota{namespace="pup-ai", container!=""} 
+            * 
+            container_spec_cpu_period{namespace="pup-ai", container!=""}
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its CPU limit"

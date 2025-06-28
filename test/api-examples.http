@@ -1,0 +1,112 @@
+### pup.ai API Examples
+### Use with VS Code REST Client extension
+
+@baseUrl = http://localhost:3000
+@contentType = application/json
+
+### Health Check
+GET {{baseUrl}}/health
+Accept: {{contentType}}
+
+### Get Metrics (Prometheus format)
+GET {{baseUrl}}/metrics
+Accept: text/plain
+
+### Internal API Examples (for testing/debugging)
+
+### Trigger Embedding Generation (Internal)
+POST {{baseUrl}}/internal/embeddings/generate
+Content-Type: {{contentType}}
+X-Internal-Token: {{$dotenv INTERNAL_API_TOKEN}}
+
+{
+  "messageId": "msg-123",
+  "text": "This is a test message for embedding generation",
+  "userId": "U001TEST"
+}
+
+### Get User Profile (Internal)
+GET {{baseUrl}}/internal/users/U001ALICE
+Accept: {{contentType}}
+X-Internal-Token: {{$dotenv INTERNAL_API_TOKEN}}
+
+### Update Feature Flag (Internal)
+PUT {{baseUrl}}/internal/features/advanced_memory
+Content-Type: {{contentType}}
+X-Internal-Token: {{$dotenv INTERNAL_API_TOKEN}}
+
+{
+  "enabled": true,
+  "rolloutPercentage": 50
+}
+
+### Trigger Conversation Summary (Internal)
+POST {{baseUrl}}/internal/summaries/generate
+Content-Type: {{contentType}}
+X-Internal-Token: {{$dotenv INTERNAL_API_TOKEN}}
+
+{
+  "channelId": "C001GENERAL",
+  "date": "2024-01-01"
+}
+
+### Search Similar Messages (Internal)
+POST {{baseUrl}}/internal/search/similar
+Content-Type: {{contentType}}
+X-Internal-Token: {{$dotenv INTERNAL_API_TOKEN}}
+
+{
+  "query": "How do I use pgvector?",
+  "limit": 10,
+  "threshold": 0.7
+}
+
+### Slack Webhook Examples (for local testing)
+
+### Simulate Slack Message Event
+POST {{baseUrl}}/slack/events
+Content-Type: {{contentType}}
+X-Slack-Signature: {{$dotenv SLACK_SIGNING_SECRET}}
+X-Slack-Request-Timestamp: {{$timestamp}}
+
+{
+  "token": "verification_token",
+  "team_id": "T001TEAM",
+  "api_app_id": "A001APP",
+  "event": {
+    "type": "message",
+    "channel": "C001GENERAL",
+    "user": "U001ALICE",
+    "text": "Hello, bot!",
+    "ts": "1234567890.123456"
+  },
+  "type": "event_callback",
+  "event_id": "Ev001",
+  "event_time": 1234567890
+}
+
+### Simulate App Mention
+POST {{baseUrl}}/slack/events
+Content-Type: {{contentType}}
+X-Slack-Signature: {{$dotenv SLACK_SIGNING_SECRET}}
+X-Slack-Request-Timestamp: {{$timestamp}}
+
+{
+  "token": "verification_token",
+  "team_id": "T001TEAM",
+  "api_app_id": "A001APP",
+  "event": {
+    "type": "app_mention",
+    "channel": "C001GENERAL",
+    "user": "U001ALICE",
+    "text": "<@U999BOTID> what's the weather like?",
+    "ts": "1234567890.123456"
+  },
+  "type": "event_callback",
+  "event_id": "Ev002",
+  "event_time": 1234567890
+}
+
+### WebSocket Connection Test (for Socket Mode)
+### Note: Use wscat or similar tool for WebSocket testing
+# wscat -c ws://localhost:3000/slack/socket -H "Authorization: Bearer xapp-..."

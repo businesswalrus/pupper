@@ -1,0 +1,63 @@
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+        base: auto
+        flags:
+          - unit
+          - integration
+        if_not_found: success
+        if_ci_failed: error
+    
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+        base: auto
+        if_not_found: success
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: true
+      loop: true
+      macro: false
+      method: false
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+  
+flags:
+  unit:
+    paths:
+      - src/
+    carryforward: false
+  
+  integration:
+    paths:
+      - src/
+    carryforward: false
+
+ignore:
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/test-utils/**"
+  - "**/mocks/**"
+  - "src/index.ts"
+  - "src/bootstrap.ts"
+  - "**/*.d.ts"

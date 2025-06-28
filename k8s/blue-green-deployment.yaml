@@ -1,0 +1,214 @@
+# Blue-Green Deployment Strategy for pup.ai v2
+# This configuration enables zero-downtime deployments
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pup-ai-active
+  namespace: pup-ai
+  labels:
+    app: pup-ai
+    component: router
+spec:
+  selector:
+    app: pup-ai
+    component: bot
+    version: blue  # Switch between 'blue' and 'green'
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+  type: ClusterIP
+---
+# Blue deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pup-ai-blue
+  namespace: pup-ai
+  labels:
+    app: pup-ai
+    component: bot
+    version: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pup-ai
+      component: bot
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: pup-ai
+        component: bot
+        version: blue
+    spec:
+      containers:
+      - name: pup-ai
+        image: your-registry.com/pup-ai:blue
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: pup-ai-config
+        - secretRef:
+            name: pup-ai-secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# Green deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pup-ai-green
+  namespace: pup-ai
+  labels:
+    app: pup-ai
+    component: bot
+    version: green
+spec:
+  replicas: 0  # Initially scaled to 0
+  selector:
+    matchLabels:
+      app: pup-ai
+      component: bot
+      version: green
+  template:
+    metadata:
+      labels:
+        app: pup-ai
+        component: bot
+        version: green
+    spec:
+      containers:
+      - name: pup-ai
+        image: your-registry.com/pup-ai:green
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: pup-ai-config
+        - secretRef:
+            name: pup-ai-secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# Script to perform blue-green deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blue-green-script
+  namespace: pup-ai
+data:
+  deploy.sh: |
+    #!/bin/bash
+    # Blue-Green Deployment Script
+    
+    set -euo pipefail
+    
+    # Configuration
+    NAMESPACE="pup-ai"
+    NEW_VERSION=$1
+    
+    if [ -z "$NEW_VERSION" ]; then
+        echo "Usage: $0 <new-version>"
+        exit 1
+    fi
+    
+    # Determine current active version
+    CURRENT_VERSION=$(kubectl get service pup-ai-active -n $NAMESPACE -o jsonpath='{.spec.selector.version}')
+    
+    if [ "$CURRENT_VERSION" == "blue" ]; then
+        INACTIVE_VERSION="green"
+    else
+        INACTIVE_VERSION="blue"
+    fi
+    
+    echo "Current active version: $CURRENT_VERSION"
+    echo "Deploying to: $INACTIVE_VERSION"
+    
+    # Update inactive deployment with new image
+    kubectl set image deployment/pup-ai-$INACTIVE_VERSION \
+        pup-ai=your-registry.com/pup-ai:$NEW_VERSION \
+        -n $NAMESPACE
+    
+    # Scale up inactive deployment
+    kubectl scale deployment pup-ai-$INACTIVE_VERSION --replicas=3 -n $NAMESPACE
+    
+    # Wait for rollout to complete
+    echo "Waiting for deployment to be ready..."
+    kubectl rollout status deployment/pup-ai-$INACTIVE_VERSION -n $NAMESPACE
+    
+    # Run smoke tests
+    echo "Running smoke tests..."
+    INACTIVE_POD=$(kubectl get pods -n $NAMESPACE -l version=$INACTIVE_VERSION -o jsonpath='{.items[0].metadata.name}')
+    
+    # Test health endpoint
+    if kubectl exec -n $NAMESPACE $INACTIVE_POD -- curl -s -f http://localhost:3000/health > /dev/null; then
+        echo "Health check passed"
+    else
+        echo "Health check failed! Rolling back..."
+        kubectl scale deployment pup-ai-$INACTIVE_VERSION --replicas=0 -n $NAMESPACE
+        exit 1
+    fi
+    
+    # Switch traffic to new version
+    echo "Switching traffic to $INACTIVE_VERSION..."
+    kubectl patch service pup-ai-active -n $NAMESPACE \
+        -p '{"spec":{"selector":{"version":"'$INACTIVE_VERSION'"}}}'
+    
+    # Monitor for errors
+    echo "Monitoring for errors (30 seconds)..."
+    sleep 30
+    
+    # Check error rate
+    ERROR_COUNT=$(kubectl logs -n $NAMESPACE -l version=$INACTIVE_VERSION --since=30s | grep ERROR | wc -l)
+    
+    if [ $ERROR_COUNT -gt 10 ]; then
+        echo "High error rate detected! Rolling back..."
+        kubectl patch service pup-ai-active -n $NAMESPACE \
+            -p '{"spec":{"selector":{"version":"'$CURRENT_VERSION'"}}}'
+        kubectl scale deployment pup-ai-$INACTIVE_VERSION --replicas=0 -n $NAMESPACE
+        exit 1
+    fi
+    
+    # Scale down old version
+    echo "Scaling down $CURRENT_VERSION..."
+    kubectl scale deployment pup-ai-$CURRENT_VERSION --replicas=0 -n $NAMESPACE
+    
+    echo "Deployment complete! $INACTIVE_VERSION is now active."

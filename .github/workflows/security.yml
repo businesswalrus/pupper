@@ -1,0 +1,275 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run at 2 AM UTC every Monday
+    - cron: '0 2 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - 'package*.json'
+      - '.github/workflows/security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        id: npm-audit
+        run: |
+          npm audit --json > npm-audit-report.json || true
+          npm audit
+
+      - name: Upload npm audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-report
+          path: npm-audit-report.json
+
+      - name: Run Snyk test
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --json-file-output=snyk-report.json
+
+      - name: Upload Snyk report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snyk-report
+          path: snyk-report.json
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'pupper'
+          path: '.'
+          format: 'ALL'
+          args: >
+            --enableRetired
+            --enableExperimental
+        
+      - name: Upload OWASP reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-reports
+          path: reports/
+
+  code-scan:
+    name: Static Code Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint security plugin
+        run: |
+          npm install --save-dev eslint-plugin-security
+          npx eslint src --ext .ts --plugin security --rule 'security/detect-object-injection: error' || true
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/typescript
+            p/owasp-top-ten
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+          queries: security-extended
+
+      - name: Build for CodeQL
+        run: npm run build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t pupper:scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'pupper:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: 'pupper:scan'
+          fail-build: true
+          severity-cutoff: high
+
+  license-scan:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run license checker
+        run: |
+          npm install -g license-checker
+          license-checker --summary --out license-report.txt
+          
+          # Check for problematic licenses
+          license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0' || {
+            echo "Found packages with non-approved licenses"
+            license-checker --exclude 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0'
+            exit 1
+          }
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: license-report.txt
+
+  create-report:
+    name: Create Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-scan, secret-scan, container-scan, license-scan]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create consolidated report
+        run: |
+          echo "# Security Scan Report" > security-report.md
+          echo "Generated: $(date)" >> security-report.md
+          echo "" >> security-report.md
+          
+          echo "## Summary" >> security-report.md
+          echo "- Dependency Scan: ${{ needs.dependency-scan.result }}" >> security-report.md
+          echo "- Code Scan: ${{ needs.code-scan.result }}" >> security-report.md
+          echo "- Secret Scan: ${{ needs.secret-scan.result }}" >> security-report.md
+          echo "- Container Scan: ${{ needs.container-scan.result }}" >> security-report.md
+          echo "- License Scan: ${{ needs.license-scan.result }}" >> security-report.md
+          
+          echo "" >> security-report.md
+          echo "## Detailed Results" >> security-report.md
+          echo "See individual artifact reports for details." >> security-report.md
+
+      - name: Upload final report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: security-report.md
+
+      - name: Create issue if vulnerabilities found
+        if: |
+          needs.dependency-scan.result == 'failure' ||
+          needs.code-scan.result == 'failure' ||
+          needs.secret-scan.result == 'failure' ||
+          needs.container-scan.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Security vulnerabilities found - ${new Date().toISOString().split('T')[0]}`;
+            const body = `## Security Scan Alert
+            
+            One or more security scans have failed. Please review the results:
+            
+            - **Dependency Scan**: ${{ needs.dependency-scan.result }}
+            - **Code Scan**: ${{ needs.code-scan.result }}
+            - **Secret Scan**: ${{ needs.secret-scan.result }}
+            - **Container Scan**: ${{ needs.container-scan.result }}
+            - **License Scan**: ${{ needs.license-scan.result }}
+            
+            [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            ### Action Required
+            Please review and address the security vulnerabilities as soon as possible.
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'high-priority']
+            });

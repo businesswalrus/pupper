@@ -1,6 +1,6 @@
 console.log('Starting pup.ai v2 - Loading modules...');
 
-import { app } from '@bot/app';
+import { app, initializeSecurity } from '@bot/app';
 import { config } from '@utils/config';
 import { testConnection, closePool } from '@db/connection';
 import { connectRedis, disconnectRedis } from '@db/redis';
@@ -35,6 +35,11 @@ const start = async () => {
     logger.info('Connecting to Redis...');
     await connectRedis();
     logger.info('Redis connected successfully');
+    
+    // Initialize security features
+    logger.info('Initializing security features...');
+    await initializeSecurity();
+    logger.info('Security features initialized');
 
     // Start all workers
     logger.info('Starting background workers...');
