@@ -1,0 +1,27 @@
+{
+  "name": "pup-ai-simple",
+  "version": "1.0.0",
+  "description": "Simple Slack bot with personality and memory",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:migrate": "tsx scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.22.0",
+    "dotenv": "^16.6.1",
+    "openai": "^4.104.0",
+    "pg": "^8.16.3",
+    "pgvector": "^0.2.1",
+    "bullmq": "^5.56.0",
+    "redis": "^4.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/pg": "^8.15.4",
+    "tsx": "^4.20.2",
+    "typescript": "^5.8.3"
+  }
+}

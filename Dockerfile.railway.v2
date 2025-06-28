@@ -1,0 +1,100 @@
+# Railway-Optimized Dockerfile for pup.ai v2
+# Designed to handle Railway's specific build environment and constraints
+
+FROM node:20-alpine
+
+# Set working directory early
+WORKDIR /app
+
+# Install system dependencies first (cached layer)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    dumb-init \
+    curl \
+    jq \
+    ca-certificates \
+    tzdata
+
+# Railway-specific: Create build cache directories
+RUN mkdir -p /app/.npm /app/.cache && \
+    chmod -R 777 /app/.npm /app/.cache
+
+# Set npm cache directory (Railway-friendly)
+ENV NPM_CONFIG_CACHE=/app/.npm
+
+# Copy package files first
+# IMPORTANT: Copy both package.json AND package-lock.json
+COPY package*.json ./
+
+# Railway-specific: Clean any potential cache conflicts
+RUN rm -rf node_modules .npm .cache package-lock.json.bak
+
+# Install dependencies with Railway-friendly flags
+# Using npm ci when lock file exists, npm install as fallback
+RUN if [ -f "package-lock.json" ]; then \
+        echo "Installing with npm ci..." && \
+        npm ci --no-audit --no-fund --legacy-peer-deps || \
+        (echo "npm ci failed, falling back to npm install..." && \
+         rm -f package-lock.json && \
+         npm install --no-audit --no-fund --legacy-peer-deps); \
+    else \
+        echo "No package-lock.json found, using npm install..." && \
+        npm install --no-audit --no-fund --legacy-peer-deps; \
+    fi
+
+# Clear npm cache to reduce image size
+RUN npm cache clean --force
+
+# Copy TypeScript config files needed for build
+COPY tsconfig*.json ./
+
+# Copy source code
+COPY src ./src
+COPY scripts ./scripts
+COPY migrations ./migrations
+
+# Build TypeScript with better error handling
+RUN echo "Building TypeScript..." && \
+    npm run build || \
+    (echo "Build failed, checking for common issues..." && \
+     ls -la && \
+     echo "node_modules exists:" && ls node_modules/ | head -20 && \
+     exit 1)
+
+# Create non-root user (Railway best practice)
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/tmp /app/dist && \
+    chown -R nodejs:nodejs /app
+
+# Copy Railway-specific health check script
+COPY --chown=nodejs:nodejs scripts/railway-health.js ./scripts/
+
+# Set timezone
+ENV TZ=UTC
+
+# Railway-specific environment variables
+ENV NODE_ENV=production \
+    PORT=3000 \
+    NODE_OPTIONS="--max-old-space-size=512 --enable-source-maps"
+
+# Switch to non-root user
+USER nodejs
+
+# Expose port (Railway will override this)
+EXPOSE 3000
+
+# Health check with Railway-friendly parameters
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=5 \
+  CMD node scripts/railway-health.js || exit 1
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start with production script that handles Railway environment
+CMD ["node", "scripts/start-railway.js"]
