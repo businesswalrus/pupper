@@ -9,9 +9,12 @@ RUN apk add --no-cache python3 make g++ dumb-init
 # Copy only package.json first (not package-lock)
 COPY package.json ./
 
+# Remove any cached package-lock.json that Railway might have
+RUN rm -f package-lock.json npm-shrinkwrap.json
+
 # Install ALL dependencies using npm install (not ci)
 # This is more flexible and handles missing packages better
-RUN npm install && \
+RUN npm install --legacy-peer-deps && \
     npm cache clean --force
 
 # Copy source code
